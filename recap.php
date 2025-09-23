@@ -1,6 +1,7 @@
 <?php
 session_start();
 
+
 // Récupération des données du formulaire
 $form = [
     'nom' => $_POST['nom'] ?? '',
@@ -31,6 +32,26 @@ if(!empty($form['autre_centre'])) {
 $langues_affichage = $form['langues'];
 if(!empty($form['autre_langue'])) {
     $langues_affichage[] = $form['autre_langue'];
+}
+
+$fichier_info = '';
+if(isset($_FILES['fichier']) && $_FILES['fichier']['error'] === UPLOAD_ERR_OK){
+    $nomTemp = $_FILES['fichier']['tmp_name'];
+    $nomOriginal = $_FILES['fichier']['name'];
+    $taille = $_FILES['fichier']['size'];
+    $type = $_FILES['fichier']['type'];
+
+    // Déplacement vers un dossier “uploads/”
+    $destination = __DIR__ . '/uploads/' . basename($nomOriginal);
+    if(!is_dir(__DIR__.'/uploads')) mkdir(__DIR__.'/uploads', 0777, true);
+
+    if(move_uploaded_file($nomTemp, $destination)){
+        $fichier_info = "Fichier uploadé avec succès : $nomOriginal ($taille bytes, type: $type)";
+    } else {
+        $fichier_info = "Erreur lors de l'upload du fichier.";
+    }
+} else {
+    $fichier_info = "Aucun fichier uploadé.";
 }
 ?>
 
@@ -63,5 +84,8 @@ if(!empty($form['autre_langue'])) {
     <p><b>Langues :</b> <?= !empty($langues_affichage) ? implode(', ', $langues_affichage) : '-' ?></p>
     <p><b>Remarques :</b> <?= $form['remarques'] ?: '-' ?></p>
 
+
+
+    <p><b>Fichier uploadé :</b> <?= $fichier_info ?></p>
 </body>
 </html>

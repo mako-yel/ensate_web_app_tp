@@ -1,10 +1,8 @@
 <?php
 session_start();
 
-// Valeurs par défaut : toutes les clés sont définies pour éviter les warnings
-$form = isset($_SESSION['form']) ? $_SESSION['form'] : [];
-
-$form += [
+// Valeurs par défaut
+$form = isset($_SESSION['form']) ? $_SESSION['form'] : [
     'nom' => '',
     'prenom' => '',
     'age' => '',
@@ -16,9 +14,7 @@ $form += [
     'projets_realises' => '',
     'projets_stages' => '',
     'centres_interet' => [],
-    'autre_centre' => '',
     'langues' => [],
-    'autre_langue' => '',
     'remarques' => ''
 ];
 ?>
@@ -46,7 +42,7 @@ $form += [
 <body>
   <h1>Fiche de renseignements</h1>
 
-  <form action="recap.php" method="post">
+  <form action="recap.php" method="post" enctype="multipart/form-data">
 
     <!-- Section Renseignements personnels -->
     <fieldset>
@@ -83,7 +79,7 @@ $form += [
       <?php
         $modules = ['Genie Logiciel','Réseaux','Web Avancé','Technologie .Net'];
         foreach($modules as $m){
-            $checked = (isset($form['modules']) && in_array($m, $form['modules'])) ? 'checked' : '';
+            $checked = in_array($m, $form['modules'])?'checked':'';
             echo "<label class='inline'><input type='checkbox' name='modules[]' value='$m' $checked> $m</label>";
         }
       ?>
@@ -107,21 +103,21 @@ $form += [
       <?php
         $centres = ['Informatique','Sport','Musique','Lecture'];
         foreach($centres as $c){
-            $checked = (isset($form['centres_interet']) && in_array($c, $form['centres_interet'])) ? 'checked' : '';
+            $checked = in_array($c,$form['centres_interet'])?'checked':'';
             echo "<label class='inline'><input type='checkbox' name='centres_interet[]' value='$c' $checked> $c</label>";
         }
       ?>
-      <label>Autre : <input type="text" name="autre_centre" value="<?= $form['autre_centre'] ?>"></label>
+      <label>Autre : <input type="text" name="autre_centre" value="<?= $form['autre_centre'] ?? '' ?>"></label>
 
       <p>Langues parlées :</p>
       <?php
         $langues = ['Arabe','Français','Anglais','Espagnol'];
         foreach($langues as $l){
-            $checked = (isset($form['langues']) && in_array($l, $form['langues'])) ? 'checked' : '';
+            $checked = in_array($l,$form['langues'])?'checked':'';
             echo "<label class='inline'><input type='checkbox' name='langues[]' value='$l' $checked> $l</label>";
         }
       ?>
-      <label>Autre : <input type="text" name="autre_langue" value="<?= $form['autre_langue'] ?>"></label>
+      <label>Autre : <input type="text" name="autre_langue" value="<?= $form['autre_langue'] ?? '' ?>"></label>
     </fieldset>
 
     <!-- Section Remarques -->
@@ -129,6 +125,14 @@ $form += [
       <legend>Remarques</legend>
       <textarea name="remarques" rows="3" cols="50"><?= $form['remarques'] ?></textarea>
     </fieldset>
+
+    <fieldset>
+      <legend>Upload de fichier</legend>
+      <label>Choisissez un fichier :
+        <input type="file" name="fichier">
+      </label>
+    </fieldset>
+
 
     <button type="submit" name="envoyer">Envoyer</button>
   </form>
