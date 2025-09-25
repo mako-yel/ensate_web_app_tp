@@ -1,9 +1,38 @@
 <?php
 session_start();
-require_once 'db_config.php';
 
-// Initialize database
-$db = new Database();
+// Initialize data arrays in session
+if (!isset($_SESSION['students'])) {
+    $_SESSION['students'] = [
+        [
+            'nom' => 'Alami', 'prenom' => 'Ahmed', 'age' => 22, 'telephone' => '0661234567',
+            'email' => 'ahmed.alami@etu.ensa.ac.ma', 'filiere' => 'Génie Informatique',
+            'annee' => '2ème année', 'modules' => 'Java, PHP, MySQL',
+            'projets_realises' => 'Site web e-commerce', 'projets_stages' => 'Application mobile',
+            'centres_interet' => 'Intelligence Artificielle, Développement Web',
+            'langues' => 'Arabe, Français, Anglais', 'remarques' => 'Étudiant motivé', 'photo' => ''
+        ],
+        [
+            'nom' => 'Benjelloun', 'prenom' => 'Fatima', 'age' => 21, 'telephone' => '0677890123',
+            'email' => 'fatima.benjelloun@etu.ensa.ac.ma', 'filiere' => 'Génie Civil',
+            'annee' => '3ème année', 'modules' => 'AutoCAD, Structure, Béton armé',
+            'projets_realises' => 'Conception d\'un pont', 'projets_stages' => 'Bureau d\'études',
+            'centres_interet' => 'Architecture, BIM', 'langues' => 'Arabe, Français, Espagnol',
+            'remarques' => 'Excellente en conception', 'photo' => ''
+        ]
+    ];
+}
+
+if (!isset($_SESSION['companies'])) {
+    $_SESSION['companies'] = [
+        ['id' => 1, 'name' => 'TechnoSoft Maroc', 'sector' => 'Technologies de l\'information', 'city' => 'Tétouan', 'email' => 'rh@technosoft.ma'],
+        ['id' => 2, 'name' => 'Build & Co', 'sector' => 'Construction', 'city' => 'Tanger', 'email' => 'stages@buildco.ma']
+    ];
+}
+
+if (!isset($_SESSION['internships'])) {
+    $_SESSION['internships'] = [];
+}
 
 // Handle form submissions
 $success = '';
@@ -17,43 +46,70 @@ if (isset($_GET['success']) && $_GET['success'] == '1') {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['add_company'])) {
         if (!empty($_POST['name']) && !empty($_POST['sector']) && !empty($_POST['city'])) {
-            try {
-                $db->addCompany(
-                    trim($_POST['name']),
-                    trim($_POST['sector']),
-                    trim($_POST['city']),
-                    trim($_POST['email'] ?? '')
-                );
-                $success = "Entreprise ajoutée avec succès!";
-            } catch (Exception $e) {
-                $error = "Erreur lors de l'ajout de l'entreprise: " . $e->getMessage();
-            }
+            $company = [
+                'id' => time(),
+                'name' => htmlspecialchars($_POST['name']),
+                'sector' => htmlspecialchars($_POST['sector']),
+                'city' => htmlspecialchars($_POST['city']),
+                'email' => htmlspecialchars($_POST['email'] ?? '')
+            ];
+            $_SESSION['companies'][] = $company;
+            $success = "Entreprise ajoutée avec succès!";
         } else {
             $error = "Veuillez remplir tous les champs obligatoires.";
         }
     }
     
     if (isset($_POST['assign_internship'])) {
-        $email = trim($_POST['student_email']);
-        $company_id = $_POST['company_id'];
-        $position = trim($_POST['position'] ?? 'Stagiaire');
-        $duration = trim($_POST['duration'] ?? 'Non spécifié');
+        $email = $_POST['student_email'];
+        $student = null;
+        foreach ($_SESSION['students'] as $s) {
+            if (strtolower(trim($s['email'])) === strtolower(trim($email))) {
+                $student = $s;
+                break;
+            }
+        }
         
-        if (!empty($email) && !empty($company_id)) {
-            try {
-                $result = $db->assignInternship($email, $company_id, $position, $duration);
-                if ($result === false) {
-                    $error = "Aucun étudiant trouvé avec l'email: " . htmlspecialchars($email);
-                } elseif ($result === 'duplicate') {
+        if ($student && !empty($_POST['company_id'])) {
+            $company = null;
+            foreach ($_SESSION['companies'] as $c) {
+                if ($c['id'] == $_POST['company_id']) {
+                    $company = $c;
+                    break;
+                }
+            }
+            
+            if ($company) {
+                // Vérifier si l'étudiant a déjà un stage affecté
+                $already_has_internship = false;
+                foreach ($_SESSION['internships'] as $internship) {
+                    if (strtolower(trim($internship['student_email'])) === strtolower(trim($email))) {
+                        $already_has_internship = true;
+                        break;
+                    }
+                }
+                
+                if ($already_has_internship) {
                     $error = "Cet étudiant a déjà un stage affecté!";
                 } else {
+                    $_SESSION['internships'][] = [
+                        'id' => time(),
+                        'student_email' => $email,
+                        'student_name' => $student['prenom'] . ' ' . $student['nom'],
+                        'company_name' => $company['name'],
+                        'position' => htmlspecialchars($_POST['position'] ?? 'Stagiaire'),
+                        'duration' => htmlspecialchars($_POST['duration'] ?? 'Non spécifié'),
+                        'date' => date('d/m/Y')
+                    ];
                     $success = "Stage affecté avec succès!";
                 }
-            } catch (Exception $e) {
-                $error = "Erreur lors de l'affectation du stage.";
             }
         } else {
-            $error = "Veuillez remplir tous les champs obligatoires.";
+            if (!$student) {
+                $error = "Aucun étudiant trouvé avec l'email: " . htmlspecialchars($email) . ". Vérifiez l'adresse email ou ajoutez d'abord l'étudiant.";
+            } else {
+                $error = "Entreprise non sélectionnée!";
+            }
         }
     }
 }
@@ -62,29 +118,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $search_result = [];
 $searched = false;
 if (isset($_GET['search']) && !empty($_GET['search'])) {
-    $email = trim($_GET['search']);
-    try {
-        $search_result = $db->searchStudentsByEmail($email);
-        $searched = true;
-    } catch (Exception $e) {
-        $error = "Erreur lors de la recherche.";
+    $email = strtolower(trim($_GET['search']));
+    foreach ($_SESSION['students'] as $student) {
+        if (strpos(strtolower($student['email']), $email) !== false) {
+            $search_result[] = $student;
+        }
     }
+    $searched = true;
 }
 
-// Get data from database
-try {
-    $students = $db->getAllStudents();
-    $companies = $db->getAllCompanies();
-    $internships = $db->getAllInternships();
-    $stats = $db->getStats();
-} catch (Exception $e) {
-    $error = "Erreur de connexion à la base de données.";
-    $students = [];
-    $companies = [];
-    $internships = [];
-    $stats = ['total_students' => 0, 'total_companies' => 0, 'total_internships' => 0, 'unique_filieres' => 0];
-}
-
+$students = $_SESSION['students'];
+$companies = $_SESSION['companies'];
+$internships = $_SESSION['internships'];
 $active_tab = $_GET['tab'] ?? 'database';
 
 // Function to render student card
@@ -113,28 +158,20 @@ function renderStudentCard($student) {
             </div>
             <div class="info-item">
                 <span class="info-label">Modules:</span>
-                <span>' . htmlspecialchars($student['modules'] ?: 'Non spécifié') . '</span>
+                <span>' . htmlspecialchars($student['modules']) . '</span>
             </div>
             <div class="info-item">
                 <span class="info-label">Projets:</span>
-                <span>' . htmlspecialchars($student['projets_realises'] ?: 'Aucun projet') . '</span>
-            </div>
-            <div class="info-item">
-                <span class="info-label">Stages:</span>
-                <span>' . htmlspecialchars($student['projets_stages'] ?: 'Aucun stage') . '</span>
+                <span>' . htmlspecialchars($student['projets_realises']) . '</span>
             </div>
             <div class="info-item">
                 <span class="info-label">Langues:</span>
-                <span>' . htmlspecialchars($student['langues'] ?: 'Non spécifié') . '</span>
+                <span>' . htmlspecialchars($student['langues']) . '</span>
             </div>
             <div class="info-item">
                 <span class="info-label">Centres d\'intérêt:</span>
-                <span>' . htmlspecialchars($student['centres_interet'] ?: 'Non spécifié') . '</span>
+                <span>' . htmlspecialchars($student['centres_interet']) . '</span>
             </div>
-            ' . (!empty($student['remarques']) ? '<div class="info-item">
-                <span class="info-label">Remarques:</span>
-                <span>' . htmlspecialchars($student['remarques']) . '</span>
-            </div>' : '') . '
         </div>
     </div>';
 }
@@ -159,15 +196,10 @@ function renderStudentCard($student) {
         }
         .header {
             background: linear-gradient(45deg, #2c3e50, #34495e);
-            color: white; padding: 30px; text-align: center; position: relative;
+            color: white; padding: 30px; text-align: center;
         }
         .header h1 { font-size: 2.5em; margin-bottom: 10px; }
         .header p { font-size: 1.2em; opacity: 0.9; }
-        .sql-badge {
-            position: absolute; top: 15px; right: 20px;
-            background: #27ae60; color: white; padding: 8px 15px;
-            border-radius: 20px; font-size: 0.9em; font-weight: bold;
-        }
         .tabs { display: flex; background: #f8f9fa; border-bottom: 1px solid #dee2e6; }
         .tab-button {
             flex: 1; padding: 20px; background: none; border: none;
@@ -242,23 +274,16 @@ function renderStudentCard($student) {
         .add-student-button:hover {
             transform: translateY(-2px); box-shadow: 0 5px 15px rgba(39, 174, 96, 0.4);
         }
-        .no-data {
-            text-align: center; padding: 40px; color: #7f8c8d;
-            background: #f8f9fa; border-radius: 10px; margin: 20px 0;
-        }
-        .no-data h3 { margin-bottom: 10px; }
         @media (max-width: 768px) {
             .tabs { flex-direction: column; }
             .form-grid { grid-template-columns: 1fr; }
             .student-header { flex-direction: column; align-items: flex-start; gap: 10px; }
-            .sql-badge { position: static; display: inline-block; margin-bottom: 10px; }
         }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <div class="sql-badge">🗄️ MySQL Database</div>
             <h1>🎓 ENSA Tétouan</h1>
             <p>Système de Gestion des Étudiants et Stages</p>
         </div>
@@ -297,7 +322,7 @@ function renderStudentCard($student) {
                     <?php if ($searched): ?>
                         <?php if (count($search_result) > 0): ?>
                             <div class="alert alert-success">
-                                <strong>Étudiant(s) trouvé(s): <?= count($search_result) ?></strong>
+                                <strong>Étudiant(s) trouvé(s):</strong>
                             </div>
                             <?php foreach ($search_result as $student): ?>
                                 <?php renderStudentCard($student); ?>
@@ -310,35 +335,24 @@ function renderStudentCard($student) {
 
                 <div class="stats">
                     <div class="stat-card">
-                        <div class="stat-number"><?= $stats['total_students'] ?></div>
+                        <div class="stat-number"><?= count($students) ?></div>
                         <div class="stat-label">Étudiants Total</div>
                     </div>
                     <div class="stat-card" style="background: linear-gradient(45deg, #27ae60, #229954)">
-                        <div class="stat-number"><?= $stats['unique_filieres'] ?></div>
+                        <div class="stat-number"><?= count(array_unique(array_column($students, 'filiere'))) ?></div>
                         <div class="stat-label">Filières</div>
                     </div>
                     <div class="stat-card" style="background: linear-gradient(45deg, #f39c12, #e67e22)">
-                        <div class="stat-number"><?= $stats['total_internships'] ?></div>
+                        <div class="stat-number"><?= count($internships) ?></div>
                         <div class="stat-label">Stages Affectés</div>
-                    </div>
-                    <div class="stat-card" style="background: linear-gradient(45deg, #9b59b6, #8e44ad)">
-                        <div class="stat-number"><?= $stats['total_companies'] ?></div>
-                        <div class="stat-label">Entreprises</div>
                     </div>
                 </div>
 
                 <div class="form-section">
                     <h3>👥 Liste des Étudiants</h3>
-                    <?php if (count($students) > 0): ?>
-                        <?php foreach ($students as $student): ?>
-                            <?php renderStudentCard($student); ?>
-                        <?php endforeach; ?>
-                    <?php else: ?>
-                        <div class="no-data">
-                            <h3>Aucun étudiant enregistré</h3>
-                            <p>Commencez par ajouter des étudiants à la base de données.</p>
-                        </div>
-                    <?php endif; ?>
+                    <?php foreach ($students as $student): ?>
+                        <?php renderStudentCard($student); ?>
+                    <?php endforeach; ?>
                 </div>
 
             <?php elseif ($active_tab === 'company'): ?>
@@ -386,11 +400,11 @@ function renderStudentCard($student) {
                             </div>
                             <div class="form-group">
                                 <label>Poste de stage</label>
-                                <input type="text" name="position" placeholder="Stagiaire">
+                                <input type="text" name="position">
                             </div>
                             <div class="form-group">
                                 <label>Durée (mois)</label>
-                                <input type="number" name="duration" min="1" max="12" placeholder="3">
+                                <input type="number" name="duration" min="1" max="12">
                             </div>
                         </div>
                         <button type="submit" name="assign_internship">Affecter le Stage</button>
@@ -400,40 +414,35 @@ function renderStudentCard($student) {
                 <div class="form-section">
                     <h3>📋 Gestion des Candidatures</h3>
                     <h4>🏢 Entreprises Partenaires (<?= count($companies) ?>)</h4>
-                    <?php if (count($companies) > 0): ?>
-                        <?php foreach ($companies as $company): ?>
-                            <div class="student-card">
-                                <div class="student-header">
-                                    <div class="student-name"><?= htmlspecialchars($company['name']) ?></div>
-                                    <div style="color: #e74c3c; font-weight: 600;"><?= htmlspecialchars($company['sector']) ?></div>
-                                </div>
-                                <div class="student-info">
-                                    <div class="info-item">
-                                        <span class="info-label">Ville:</span>
-                                        <span><?= htmlspecialchars($company['city']) ?></span>
-                                    </div>
-                                    <?php if (!empty($company['email'])): ?>
-                                        <div class="info-item">
-                                            <span class="info-label">Email:</span>
-                                            <span><?= htmlspecialchars($company['email']) ?></span>
-                                        </div>
-                                    <?php endif; ?>
-                                </div>
+                    <?php foreach ($companies as $company): ?>
+                        <div class="student-card">
+                            <div class="student-header">
+                                <div class="student-name"><?= htmlspecialchars($company['name']) ?></div>
+                                <div style="color: #e74c3c; font-weight: 600;"><?= htmlspecialchars($company['sector']) ?></div>
                             </div>
-                        <?php endforeach; ?>
-                    <?php else: ?>
-                        <div class="no-data">
-                            <h3>Aucune entreprise enregistrée</h3>
-                            <p>Ajoutez des entreprises partenaires pour les stages.</p>
+                            <div class="student-info">
+                                <div class="info-item">
+                                    <span class="info-label">Ville:</span>
+                                    <span><?= htmlspecialchars($company['city']) ?></span>
+                                </div>
+                                <?php if (!empty($company['email'])): ?>
+                                    <div class="info-item">
+                                        <span class="info-label">Email:</span>
+                                        <span><?= htmlspecialchars($company['email']) ?></span>
+                                    </div>
+                                <?php endif; ?>
+                            </div>
                         </div>
-                    <?php endif; ?>
+                    <?php endforeach; ?>
 
                     <h4 style="margin-top: 20px;">🎯 Stages Affectés (<?= count($internships) ?>)</h4>
-                    <?php if (count($internships) > 0): ?>
+                    <?php if (count($internships) === 0): ?>
+                        <p style="text-align: center; color: #7f8c8d;">Aucun stage affecté pour le moment.</p>
+                    <?php else: ?>
                         <?php foreach ($internships as $internship): ?>
                             <div class="student-card">
                                 <div class="student-header">
-                                    <div class="student-name"><?= htmlspecialchars($internship['prenom'] . ' ' . $internship['nom']) ?></div>
+                                    <div class="student-name"><?= htmlspecialchars($internship['student_name']) ?></div>
                                     <div style="color: #27ae60; font-weight: 600;"><?= htmlspecialchars($internship['company_name']) ?></div>
                                 </div>
                                 <div class="student-info">
@@ -450,32 +459,16 @@ function renderStudentCard($student) {
                                         <span><?= htmlspecialchars($internship['duration']) ?> mois</span>
                                     </div>
                                     <div class="info-item">
-                                        <span class="info-label">Date:</span>
-                                        <span><?= date('d/m/Y', strtotime($internship['assigned_date'])) ?></span>
+                                        <span class="info-label">Date d'affectation:</span>
+                                        <span><?= htmlspecialchars($internship['date']) ?></span>
                                     </div>
                                 </div>
                             </div>
                         <?php endforeach; ?>
-                    <?php else: ?>
-                        <div class="no-data">
-                            <h3>Aucun stage affecté</h3>
-                            <p>Commencez par affecter des stages aux étudiants.</p>
-                        </div>
                     <?php endif; ?>
                 </div>
             <?php endif; ?>
         </div>
     </div>
-
-    <script>
-        // Auto-hide alerts after 5 seconds
-        setTimeout(function() {
-            document.querySelectorAll('.alert').forEach(alert => {
-                alert.style.opacity = '0';
-                alert.style.transform = 'translateY(-20px)';
-                setTimeout(() => alert.remove(), 500);
-            });
-        }, 5000);
-    </script>
 </body>
 </html>
